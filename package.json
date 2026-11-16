@@ -1,6 +1,6 @@
 {
   "name": "@asolutions/nuxt-base",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Nuxt Layer com as partes comuns dos apps da ASolutions: observabilidade no GlitchTip, autenticação OIDC, saúde e cabeçalhos de segurança",
   "type": "module",
   "main": "./nuxt.config.ts",

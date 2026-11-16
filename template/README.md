@@ -40,7 +40,7 @@ As migrations rodam na subida do servidor; `RUN_MIGRATIONS=false` desliga.
 | `server/plugins/database.ts`     | Migrations na subida e verificação de saúde do banco                                       |
 | `server/plugins/push-store.ts`   | Diz ao layer `/push` onde ficam as inscrições                                              |
 | `server/api/me.get.ts`           | Modelo de rota protegida (`requireAuthUser`)                                               |
-| `server/api/push/test.post.ts`   | Modelo de envio de push (`sendPushToUser`)                                                 |
+| `server/api/push/test.post.ts`   | Modelo de envio de push (`sendPushToOwner`)                                                |
 | `app/pages/painel.vue`           | Página protegida, com o botão de notificações (`usePush`)                                  |
 | `public/`                        | Ícones do PWA (troque pelos do app, mantendo os nomes)                                     |
 

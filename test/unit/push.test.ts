@@ -1,13 +1,20 @@
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { H3Event } from 'h3'
 import { notificationFromPayload, safeTargetPath } from '../../layers/push/shared/push'
 import {
   isAllowedPushEndpoint,
   readPushEnv,
+  registerPushOwner,
   registerPushStore,
+  resolvePushOwner,
   sendPush,
-  sendPushToUser,
+  sendPushToOwner,
   DEFAULT_PUSH_HOSTS,
 } from '../../layers/push/server/utils/push'
+import { createFilePushStore } from '../../layers/push/server/utils/push-file-store'
 import { parseSubscriptionBody } from '../../layers/push/server/utils/push-validation'
 
 const subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'p', auth: 'a' }
@@ -124,15 +131,80 @@ describe('sendPush', () => {
   })
 })
 
-describe('sendPushToUser', () => {
+describe('sendPushToOwner', () => {
   it('sem chave VAPID não consulta o store', async () => {
-    const listForUser = vi.fn()
-    registerPushStore({ save: vi.fn(), remove: vi.fn(), listForUser, removeEndpoints: vi.fn() })
+    const listForOwner = vi.fn()
+    registerPushStore({ save: vi.fn(), remove: vi.fn(), listForOwner, removeEndpoints: vi.fn() })
     const saved = { ...process.env }
     delete process.env.VAPID_PUBLIC_KEY
     delete process.env.VAPID_PRIVATE_KEY
-    expect(await sendPushToUser('u1', { title: 'Oi' })).toEqual({ sent: 0, gone: 0, failed: 0 })
-    expect(listForUser).not.toHaveBeenCalled()
+    expect(await sendPushToOwner('u1', { title: 'Oi' })).toEqual({ sent: 0, gone: 0, failed: 0 })
+    expect(listForOwner).not.toHaveBeenCalled()
     process.env = saved
+  })
+})
+
+describe('dono da inscrição', () => {
+  const event = {} as H3Event
+
+  it('o app decide o dono; o erro do resolvedor vira a resposta', async () => {
+    registerPushOwner(() => 'canal-1')
+    expect(await resolvePushOwner(event)).toBe('canal-1')
+    registerPushOwner(async () => {
+      throw Object.assign(new Error('sem sessão'), { statusCode: 401 })
+    })
+    await expect(resolvePushOwner(event)).rejects.toMatchObject({ statusCode: 401 })
+  })
+
+  it('dono vazio ou grande demais é recusado', async () => {
+    registerPushOwner(() => '')
+    await expect(resolvePushOwner(event)).rejects.toThrow(/dono inválido/)
+    registerPushOwner(() => 'x'.repeat(201))
+    await expect(resolvePushOwner(event)).rejects.toThrow(/dono inválido/)
+  })
+})
+
+describe('createFilePushStore', () => {
+  let dir: string
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true })
+  })
+  const device = (n: number) => ({
+    endpoint: `https://fcm.googleapis.com/fcm/send/${n}`,
+    p256dh: `p${n}`,
+    auth: `a${n}`,
+  })
+
+  it('guarda por dono, transfere no upsert e sobrevive a reabrir o arquivo', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'push-store-'))
+    const file = join(dir, 'sub', 'push.json')
+    const store = createFilePushStore(file)
+    expect(await store.listForOwner('ana')).toEqual([])
+
+    await Promise.all([store.save('ana', device(1)), store.save('ana', device(2))])
+    await store.save('bruno', { ...device(2), auth: 'novo' })
+    expect(await store.listForOwner('ana')).toEqual([device(1)])
+    expect(await store.listForOwner('bruno')).toEqual([{ ...device(2), auth: 'novo' }])
+
+    // Só o dono remove a própria inscrição.
+    await store.remove('bruno', device(1).endpoint)
+    expect(await store.listForOwner('ana')).toHaveLength(1)
+
+    await store.removeEndpoints([device(1).endpoint])
+    const reopened = createFilePushStore(file)
+    expect(await reopened.listForOwner('ana')).toEqual([])
+    expect(await reopened.listForOwner('bruno')).toHaveLength(1)
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+  })
+
+  it('ignora linhas malformadas e falha alto com JSON corrompido', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'push-store-'))
+    const file = join(dir, 'push.json')
+    await writeFile(file, JSON.stringify([{ owner: 'ana', ...device(1) }, { owner: 1 }, null]))
+    expect(await createFilePushStore(file).listForOwner('ana')).toEqual([device(1)])
+
+    await writeFile(file, '{corrompido')
+    await expect(createFilePushStore(file).listForOwner('ana')).rejects.toThrow()
+    expect(await readFile(file, 'utf8')).toBe('{corrompido')
   })
 })

@@ -1,4 +1,5 @@
 import webpush from 'web-push'
+import type { H3Event } from 'h3'
 import { readBaseEnv, type Env } from '../../../../server/utils/base-env'
 import { measureStep, reportFailure } from '../../../../server/utils/monitoring'
 import type { PushMessage } from '../../shared/push'
@@ -6,10 +7,17 @@ import type { PushMessage } from '../../shared/push'
 /**
  * Envio de Web Push (VAPID), extraído do family-lists.
  *
- * Onde as inscrições ficam é do app: ele registra um `PushStore` num plugin do
- * Nitro (o template traz um com Drizzle). O layer cuida do resto: chave
- * pública, rotas de inscrição, envio, limpeza das inscrições mortas e o que
- * vai ao GlitchTip — nunca o endereço da inscrição, que é uma credencial.
+ * O app registra, num plugin do Nitro, duas coisas que são dele:
+ *
+ * - `registerPushStore`: onde as inscrições ficam (o template traz uma tabela
+ *   com Drizzle; sem banco, `createFilePushStore`).
+ * - `registerPushOwner`: de quem é a inscrição feita nesta requisição. Com
+ *   login, a conta da sessão; sem login, o que o app usar para agrupar
+ *   aparelhos (um canal, um grupo).
+ *
+ * O layer cuida do resto: chave pública, rotas de inscrição, envio, limpeza
+ * das inscrições mortas e o que vai ao GlitchTip — nunca o endereço da
+ * inscrição, que é uma credencial.
  */
 
 export interface PushSubscriptionRecord {
@@ -18,12 +26,16 @@ export interface PushSubscriptionRecord {
   auth: string
 }
 
+/**
+ * As inscrições, agrupadas por dono. O dono é uma string opaca para o layer:
+ * o id da conta num app com login, ou o que `registerPushOwner` devolver.
+ */
 export interface PushStore {
-  /** Grava (ou transfere para esta conta) a inscrição do aparelho. Upsert pelo endpoint. */
-  save: (userId: string, subscription: PushSubscriptionRecord) => Promise<void>
-  /** Remove a inscrição, só se for desta conta. */
-  remove: (userId: string, endpoint: string) => Promise<void>
-  listForUser: (userId: string) => Promise<PushSubscriptionRecord[]>
+  /** Grava (ou transfere para este dono) a inscrição do aparelho. Upsert pelo endpoint. */
+  save: (owner: string, subscription: PushSubscriptionRecord) => Promise<void>
+  /** Remove a inscrição, só se for deste dono. */
+  remove: (owner: string, endpoint: string) => Promise<void>
+  listForOwner: (owner: string) => Promise<PushSubscriptionRecord[]>
   /** Remove inscrições que o serviço de push disse não existirem mais. */
   removeEndpoints: (endpoints: string[]) => Promise<void>
 }
@@ -114,6 +126,37 @@ export function usePushStore(): PushStore {
   return store
 }
 
+/**
+ * De quem é a inscrição feita nesta requisição. Lança para recusar (o erro
+ * vira a resposta: `requireAuthUser` dá 401). Nunca leia o dono do corpo da
+ * requisição sem conferir: quem escolhe o dono recebe as notificações dele.
+ */
+export type PushOwnerResolver = (event: H3Event) => string | Promise<string>
+
+let ownerResolver: PushOwnerResolver | undefined
+
+/**
+ * Registra como achar o dono da inscrição. Num plugin do Nitro do app:
+ *
+ *   registerPushOwner(async (event) => (await requireAuthUser(event)).id)
+ */
+export function registerPushOwner(resolver: PushOwnerResolver): void {
+  ownerResolver = resolver
+}
+
+export async function resolvePushOwner(event: H3Event): Promise<string> {
+  if (!ownerResolver) {
+    throw new Error(
+      'Nenhum dono de inscrição registrado: chame registerPushOwner() num plugin do Nitro.',
+    )
+  }
+  const owner = await ownerResolver(event)
+  if (typeof owner !== 'string' || owner.length === 0 || owner.length > 200) {
+    throw new Error('registerPushOwner devolveu um dono inválido.')
+  }
+  return owner
+}
+
 export type PushResult = 'sent' | 'gone' | 'failed'
 
 export interface PushOptions {
@@ -188,11 +231,11 @@ export interface PushReport {
 }
 
 /**
- * Envia a todos os aparelhos de uma conta e apaga as inscrições mortas. Sem
+ * Envia a todos os aparelhos de um dono e apaga as inscrições mortas. Sem
  * chave VAPID, ou sem inscrições, não faz nada. Nunca lança por falha de envio.
  */
-export async function sendPushToUser(
-  userId: string,
+export async function sendPushToOwner(
+  owner: string,
   message: PushMessage,
   options: PushOptions = {},
 ): Promise<PushReport> {
@@ -201,7 +244,7 @@ export async function sendPushToUser(
   if (!isPushConfigured(config)) return report
 
   const pushStore = usePushStore()
-  const subscriptions = await pushStore.listForUser(userId)
+  const subscriptions = await pushStore.listForOwner(owner)
   const gone: string[] = []
   await Promise.all(
     subscriptions.map(async (subscription) => {

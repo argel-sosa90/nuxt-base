@@ -11,6 +11,6 @@ export default defineEventHandler(async (event) => {
     insert?: { endpoint: string; p256dh: string; auth: string }[]
   }
   for (const row of body.insert ?? []) insertPushRow(user.id, row)
-  const report = await sendPushToUser(user.id, { title: 'Olá', body: 'Teste', url: '/privado' })
+  const report = await sendPushToOwner(user.id, { title: 'Olá', body: 'Teste', url: '/privado' })
   return { report, rows: pushRows().map((row) => row.endpoint) }
 })
