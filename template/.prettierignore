@@ -1,0 +1,6 @@
+.nuxt
+.output
+node_modules
+package-lock.json
+server/database/migrations
+openspec

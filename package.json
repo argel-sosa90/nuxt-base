@@ -44,5 +44,9 @@
     "vue": "3.5.45",
     "vue-router": "5.5.0",
     "vue-tsc": "3.3.14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/argel-sosa90/nuxt-base.git"
   }
 }

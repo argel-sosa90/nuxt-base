@@ -1,0 +1,40 @@
+# Build no runner do GitHub, push para registry.asolutions.dev e deploy no
+# Dokploy, pelo workflow reutilizável (segredos no Infisical, projeto "ci"):
+# https://github.com/argel-sosa90/workflows
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    # O Dockerfile faz `COPY . .`: entra tudo, menos o que comprovadamente não
+    # afeta o build. O último padrão que casa vence.
+    paths:
+      - '**'
+      - '!*.md'
+      - '!openspec/**'
+      - '!test/**'
+      - '!.claude/**'
+      - '!docker-compose.yml'
+      - '!.env.example'
+      - '!.editorconfig'
+      - '!.prettierrc.json'
+      - '!.prettierignore'
+      - '!vitest.config.ts'
+      - '!.github/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  deploy:
+    needs: test
+    uses: argel-sosa90/workflows/.github/workflows/build-push-deploy.yml@main
+    with:
+      # Troque pelo slug do app (o mesmo de app.config.ts → base.project).
+      image: meu-app

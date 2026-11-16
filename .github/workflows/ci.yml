@@ -1,0 +1,80 @@
+# Layer: formatação, tipos e testes (unitários e integração com build de
+# produção do playground, IdP OIDC e GlitchTip simulados).
+# Template: instalado contra o layer empacotado deste commit, com lint, tipos,
+# testes num Postgres de serviço e build.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  layer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Dependências
+        run: npm ci --no-audit --no-fund
+      - name: Formatação
+        run: npm run format:check
+      - name: Tipos
+        run: npm run typecheck
+      - name: Testes
+        run: npm test
+
+  template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://app:app@localhost:5432/app_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Empacotar o layer
+        run: npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+      - name: Instalar o template contra o layer deste commit
+        working-directory: template
+        run: |
+          npm pkg set "dependencies.@asolutions/nuxt-base=file:$RUNNER_TEMP/asolutions-nuxt-base-$(node -p "require('../package.json').version").tgz"
+          npm install --no-audit --no-fund
+      - name: Lint
+        working-directory: template
+        run: npm run lint
+      - name: Formatação
+        working-directory: template
+        run: npm run format:check
+      - name: Tipos
+        working-directory: template
+        run: npm run typecheck
+      - name: Testes
+        working-directory: template
+        run: npm test
+      - name: Build
+        working-directory: template
+        run: npm run build

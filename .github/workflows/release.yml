@@ -1,0 +1,36 @@
+# Tag `vX.Y.Z` (igual ao `version` do package.json): roda o CI, empacota o
+# layer e publica o .tgz como asset de uma release do GitHub. Os apps instalam
+# por essa URL: sem registry, sem token, com o hash fixado no package-lock.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Conferir a versão
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME diferente do package.json (v$version)"
+            exit 1
+          fi
+      - name: Empacotar
+        run: npm pack --ignore-scripts
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" ./*.tgz --title "$GITHUB_REF_NAME" --generate-notes
