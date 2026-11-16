@@ -1,10 +1,14 @@
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { $fetch, fetch, setup, url } from '@nuxt/test-utils/e2e'
+import { createRequire } from 'node:module'
 import { OAuth2Server } from 'oauth2-mock-server'
+import type { Browser } from 'playwright'
+import webpush from 'web-push'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { startCaptureServer } from '../support/capture-server'
 import { startFakeTracker } from '../support/fake-tracker'
+import { selfSignedCertificate } from '../support/self-signed'
 
 /**
  * O layer num app real (o playground, em build de produção) contra um IdP OIDC
@@ -28,6 +32,14 @@ const issuer = idp.issuer.url!
 
 const tracker = await startFakeTracker()
 const cpaas = await startCaptureServer()
+// Dois serviços de push falsos: um aceita, o outro diz que a inscrição morreu.
+// HTTPS: o web-push não fala outra coisa. O servidor do app confia no
+// certificado pelo NODE_EXTRA_CA_CERTS abaixo.
+const tls = selfSignedCertificate()
+const pushOk = await startCaptureServer(tls)
+pushOk.respondWith(201)
+const pushGone = await startCaptureServer(tls)
+const vapid = webpush.generateVAPIDKeys()
 const port = await freePort()
 const appUrl = `http://127.0.0.1:${port}`
 
@@ -53,6 +65,9 @@ Object.assign(process.env, {
   ZOHO_CPAAS_API_KEY: 'chave-cpaas',
   MAIL_FROM_ADDRESS: 'nao-responda@example.com',
   MAIL_FROM_NAME: 'Playground',
+  VAPID_PUBLIC_KEY: vapid.publicKey,
+  VAPID_PRIVATE_KEY: vapid.privateKey,
+  NODE_EXTRA_CA_CERTS: tls.caBundle,
 })
 
 await setup({
@@ -67,11 +82,16 @@ afterAll(async () => {
   await idp.stop()
   await tracker.close()
   await cpaas.close()
+  await pushOk.close()
+  await pushGone.close()
 })
 
 beforeEach(() => {
   tracker.clear()
   cpaas.clear()
+  pushOk.requests.length = 0
+  pushGone.requests.length = 0
+  pushGone.respondWith(410)
   profile = { email: 'Ana@Example.com', email_verified: true, name: 'Ana Teste' }
 })
 
@@ -266,14 +286,7 @@ describe('observabilidade', () => {
     expect(event.user).toEqual({ id: 'local-johndoe' })
     expect(event.request).toEqual({ url: '/api/boom', method: 'GET' })
     expect(event.exception.values.at(-1).value).toBe('explodiu com https://externo.example.com')
-    // A pilha leva linhas do código-fonte (ContextLines), que é código e não
-    // dado da requisição: o literal de /api/boom aparece ali de propósito.
-    const raw = JSON.stringify({
-      ...event,
-      exception: {
-        values: event.exception.values.map((v: any) => ({ ...v, stacktrace: undefined })),
-      },
-    })
+    const raw = withoutSourceContext(event)
     expect(raw).not.toContain('ana@example.com')
     expect(raw).not.toContain('base-session')
     expect(raw).not.toContain('token=abc')
@@ -382,13 +395,192 @@ describe('e-mail (Zoho CPaaS)', () => {
 
   it('recusa do provedor: false, e o GlitchTip recebe o status sem o destinatário', async () => {
     cpaas.respondWith(422, '{"error":"invalid","to":"ana@example.com"}')
-    expect(await $fetch('/api/mail-test', { method: 'POST', headers: { origin: appUrl } })).toEqual({
-      sent: false,
-    })
+    expect(await $fetch('/api/mail-test', { method: 'POST', headers: { origin: appUrl } })).toEqual(
+      {
+        sent: false,
+      },
+    )
     const event = (await tracker.waitFor((i) => i.type === 'event')).payload
     expect(event.fingerprint).toEqual(['mail', 'MailRejectedError'])
     expect(event.contexts.falha).toEqual({ reference: 'teste:1', status: 422 })
     expect(withoutSourceContext(event)).not.toContain('ana@example.com')
+  })
+})
+
+describe('push', () => {
+  const subscription = {
+    endpoint: 'https://fcm.googleapis.com/fcm/send/aparelho-1',
+    keys: { p256dh: 'BPub', auth: 'segredo' },
+  }
+
+  it('chave pública VAPID para o navegador', async () => {
+    expect(await $fetch('/api/_push/vapid-key')).toEqual({ publicKey: vapid.publicKey })
+  })
+
+  it('inscrição exige login e serviço de push conhecido', async () => {
+    const anonymous = await fetch('/api/_push/subscription', {
+      method: 'POST',
+      headers: { origin: appUrl, 'content-type': 'application/json' },
+      body: JSON.stringify(subscription),
+    })
+    expect(anonymous.status).toBe(401)
+
+    const jar = new CookieJar()
+    await login(jar)
+    const headers = { origin: appUrl, cookie: jar.header(), 'content-type': 'application/json' }
+    const internal = await fetch('/api/_push/subscription', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...subscription, endpoint: 'http://127.0.0.1:5432/x' }),
+    })
+    expect(internal.status).toBe(400)
+    const ok = await fetch('/api/_push/subscription', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(subscription),
+    })
+    expect(ok.status).toBe(204)
+    const removed = await fetch('/api/_push/subscription', {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    })
+    expect(removed.status).toBe(204)
+  })
+
+  it('envia assinado com VAPID e apaga a inscrição que o serviço diz não existir mais', async () => {
+    const jar = new CookieJar()
+    await login(jar)
+    // Chaves de um aparelho de verdade: o web-push cifra o payload com elas.
+    const device = webpush.generateVAPIDKeys()
+    const keys = { p256dh: device.publicKey, auth: 'c2VncmVkby1hdXRoLTE2Yg' }
+    const result = await $fetch<{ report: unknown; rows: string[] }>('/api/push-test', {
+      method: 'POST',
+      headers: { origin: appUrl, cookie: jar.header() },
+      body: {
+        insert: [
+          { endpoint: `${pushOk.url}/aparelho-vivo`, ...keys },
+          { endpoint: `${pushGone.url}/aparelho-morto`, ...keys },
+        ],
+      },
+    })
+    expect(result.report).toEqual({ sent: 1, gone: 1, failed: 0 })
+    expect(result.rows).toContain(`${pushOk.url}/aparelho-vivo`)
+    expect(result.rows).not.toContain(`${pushGone.url}/aparelho-morto`)
+
+    const [request] = pushOk.requests
+    expect(request!.headers.authorization).toMatch(/^vapid t=.+, k=/)
+    expect(request!.headers['content-encoding']).toBe('aes128gcm')
+    expect(request!.headers.ttl).toBe('86400')
+  })
+})
+
+describe('PWA no navegador', () => {
+  let browser: Browser
+
+  // O Playwright do ambiente (CI: devDependency com `npx playwright install chromium`).
+  const { chromium } = createRequire(import.meta.url)('playwright') as typeof import('playwright')
+
+  afterAll(async () => {
+    await browser?.close()
+  })
+
+  async function openApp(path = '/') {
+    // Chromium completo em headless: o "headless shell" nega notificações no
+    // service worker mesmo com a permissão concedida.
+    browser ??= await chromium.launch({ channel: 'chromium' })
+    const context = await browser.newContext()
+    await context.grantPermissions(['notifications'], { origin: appUrl })
+    const page = await context.newPage()
+    await page.goto(`${appUrl}${path}`)
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready
+    })
+    // A primeira visita instala; o controle da página vem com o `clients.claim()`.
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
+    return { context, page }
+  }
+
+  it('manifest no HTML do servidor e service worker com precache', async () => {
+    const html = await $fetch<string>('/')
+    expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">')
+    const { context, page } = await openApp()
+    const cached = await page.evaluate(async () => {
+      const names = await caches.keys()
+      const urls: string[] = []
+      for (const name of names) {
+        for (const request of await (await caches.open(name)).keys())
+          urls.push(new URL(request.url).pathname)
+      }
+      return urls
+    })
+    expect(cached.some((path) => path.startsWith('/_nuxt/') && path.endsWith('.js'))).toBe(true)
+    expect(cached.some((path) => path.startsWith('/offline'))).toBe(true)
+    await context.close()
+  })
+
+  it('sem rede, a navegação abre a casca offline e o app monta a página pedida', async () => {
+    const { context, page } = await openApp()
+    await context.setOffline(true)
+    await page.goto(`${appUrl}/privado`)
+    // Sessão desconhecida offline: a tela abre em vez de mandar ao IdP sem rede.
+    await page.waitForSelector('[data-test="private"]', { timeout: 15_000 })
+    await context.close()
+  })
+
+  it('push entregue ao service worker vira notificação do sistema', async () => {
+    const { context, page } = await openApp()
+    const cdp = await context.newCDPSession(page)
+    const registrationId = await new Promise<string>((resolve) => {
+      cdp.on('ServiceWorker.workerRegistrationUpdated', ({ registrations }) => {
+        const found = registrations.find(
+          (r: { scopeURL: string; isDeleted: boolean }) =>
+            r.scopeURL === `${appUrl}/` && !r.isDeleted,
+        )
+        if (found) resolve(found.registrationId)
+      })
+      void cdp.send('ServiceWorker.enable')
+    })
+    await cdp.send('ServiceWorker.deliverPushMessage', {
+      origin: appUrl,
+      registrationId,
+      data: JSON.stringify({
+        title: 'Conta vence hoje',
+        body: 'Luz',
+        url: '/privado',
+        tag: 'conta-1',
+      }),
+    })
+    const shown = async () =>
+      page.evaluate(async () =>
+        (await (await navigator.serviceWorker.ready).getNotifications()).map((n) => ({
+          title: n.title,
+          body: n.body,
+          tag: n.tag,
+          data: n.data,
+        })),
+      )
+    await expect.poll(shown, { timeout: 10_000 }).toHaveLength(1)
+    expect(await shown()).toEqual([
+      { title: 'Conta vence hoje', body: 'Luz', tag: 'conta-1', data: { url: '/privado' } },
+    ])
+    await context.close()
+  })
+
+  it('logout apaga os caches de dados da conta e mantém o precache', async () => {
+    const { context, page } = await openApp('/auth/login?returnTo=/')
+    await page.waitForSelector('[data-test="user"]')
+    await page.evaluate(async () => {
+      const cache = await caches.open('api-dados')
+      await cache.put('/api/dados', new Response('{"segredo":1}'))
+    })
+    await page.getByRole('button', { name: 'Sair' }).click()
+    await page.waitForURL(`${appUrl}/`)
+    await page.waitForSelector('button:has-text("Entrar")')
+    const names = await page.evaluate(() => caches.keys())
+    expect(names).not.toContain('api-dados')
+    expect(names.some((name) => name.startsWith('workbox-precache'))).toBe(true)
+    await context.close()
   })
 })
 

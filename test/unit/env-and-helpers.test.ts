@@ -24,7 +24,9 @@ describe('readBaseEnv', () => {
   })
 
   it('lê o OIDC e normaliza URLs', () => {
-    expect(readBaseEnv({ APP_URL: 'https://app.example.com/' }).appOrigin).toBe('https://app.example.com')
+    expect(readBaseEnv({ APP_URL: 'https://app.example.com/' }).appOrigin).toBe(
+      'https://app.example.com',
+    )
     const env = readAuthEnv({
       APP_URL: 'https://app.example.com/',
       OIDC_ISSUER: 'https://auth.example.com/',

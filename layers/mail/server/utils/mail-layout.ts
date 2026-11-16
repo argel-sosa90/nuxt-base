@@ -48,9 +48,14 @@ function safeUrl(url: string): string {
   throw new Error('URL de botão inválida')
 }
 
-export function renderEmail(content: EmailContent, brand: EmailBrand): { html: string; text: string } {
+export function renderEmail(
+  content: EmailContent,
+  brand: EmailBrand,
+): { html: string; text: string } {
   const color = /^#[0-9a-f]{3,8}$/i.test(brand.color) ? brand.color : '#16a34a'
-  const button = content.button ? { label: content.button.label, url: safeUrl(content.button.url) } : undefined
+  const button = content.button
+    ? { label: content.button.label, url: safeUrl(content.button.url) }
+    : undefined
   const footer = [brand.name, brand.footer].filter(Boolean).join(' — ')
 
   const paragraphs = content.paragraphs
@@ -96,9 +101,11 @@ export function renderEmail(content: EmailContent, brand: EmailBrand): { html: s
 
 /** A marca do `app.config.ts` (`base.mail`), com o remetente como nome padrão. */
 export function mailBrand(): EmailBrand {
-  const config = (useAppConfig() as unknown as {
-    base: { mail: { brandName: string; brandColor: string; footer: string } }
-  }).base.mail
+  const config = (
+    useAppConfig() as unknown as {
+      base: { mail: { brandName: string; brandColor: string; footer: string } }
+    }
+  ).base.mail
   return {
     name: config.brandName || mailEnv().fromName,
     color: config.brandColor,
@@ -120,5 +127,11 @@ export function sendTemplatedMail(
   options: EmailContent & { to: string; subject: string; reference?: string },
 ): Promise<boolean> {
   const { html, text } = renderEmail(options, mailBrand())
-  return sendMail({ to: options.to, subject: options.subject, reference: options.reference, html, text })
+  return sendMail({
+    to: options.to,
+    subject: options.subject,
+    reference: options.reference,
+    html,
+    text,
+  })
 }

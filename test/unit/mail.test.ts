@@ -7,7 +7,13 @@ const config = readMailEnv({
   MAIL_FROM_ADDRESS: 'nao-responda@example.com',
   MAIL_FROM_NAME: 'Meu App',
 })
-const message = { to: 'ana@example.com', subject: 'Oi', text: 't', html: '<p>h</p>', reference: 'teste:1' }
+const message = {
+  to: 'ana@example.com',
+  subject: 'Oi',
+  text: 't',
+  html: '<p>h</p>',
+  reference: 'teste:1',
+}
 
 describe('readMailEnv', () => {
   it('URL padrão do CPaaS e remetente', () => {
@@ -44,7 +50,9 @@ describe('deliverMail', () => {
   it('sem configuração, recusa ou erro de rede: false, sem lançar', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const fetchMock = vi.fn()
-    expect(await deliverMail(readMailEnv({}), message, fetchMock as unknown as typeof fetch)).toBe(false)
+    expect(await deliverMail(readMailEnv({}), message, fetchMock as unknown as typeof fetch)).toBe(
+      false,
+    )
     expect(fetchMock).not.toHaveBeenCalled()
     const reject = async () => new Response('{"to":"ana@example.com"}', { status: 400 })
     expect(await deliverMail(config, message, reject as unknown as typeof fetch)).toBe(false)
@@ -91,11 +99,16 @@ describe('renderEmail', () => {
 
   it('recusa link que não é http(s) ou mailto', () => {
     expect(() =>
-      renderEmail({ title: 't', paragraphs: [], button: { label: 'x', url: 'javascript:alert(1)' } }, brand),
+      renderEmail(
+        { title: 't', paragraphs: [], button: { label: 'x', url: 'javascript:alert(1)' } },
+        brand,
+      ),
     ).toThrow()
   })
 
   it('escapeHtml', () => {
-    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;')
+    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
+      '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;',
+    )
   })
 })

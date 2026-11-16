@@ -1,4 +1,10 @@
-import { createServer, type IncomingHttpHeaders } from 'node:http'
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type ServerResponse,
+} from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
 import type { AddressInfo } from 'node:net'
 
 /** Servidor HTTP que guarda cada pedido e responde o que o teste mandar. */
@@ -19,10 +25,13 @@ export interface CaptureServer {
   close: () => Promise<void>
 }
 
-export async function startCaptureServer(): Promise<CaptureServer> {
+export async function startCaptureServer(tls?: {
+  key: string
+  cert: string
+}): Promise<CaptureServer> {
   const requests: CapturedRequest[] = []
   let reply = { status: 200, body: '{}' }
-  const server = createServer(async (request, response) => {
+  const handler = async (request: IncomingMessage, response: ServerResponse) => {
     const chunks: Buffer[] = []
     for await (const chunk of request) chunks.push(chunk as Buffer)
     requests.push({
@@ -33,11 +42,12 @@ export async function startCaptureServer(): Promise<CaptureServer> {
     })
     response.writeHead(reply.status, { 'Content-Type': 'application/json' })
     response.end(reply.body)
-  })
+  }
+  const server = tls ? createHttpsServer(tls, handler) : createServer(handler)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `${tls ? 'https' : 'http'}://127.0.0.1:${port}`,
     requests,
     respondWith: (status, body = '{}') => {
       reply = { status, body }

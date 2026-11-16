@@ -44,3 +44,13 @@ declare module 'nuxt/schema' {
     base?: BaseAppConfigInput
   }
 }
+
+declare module '#app' {
+  interface RuntimeNuxtHooks {
+    /**
+     * No navegador, antes do logout (`useAuth().logout()`): cada feature limpa
+     * o que é da conta neste aparelho. Não deve lançar: sair nunca pode falhar.
+     */
+    'base:auth:logout': () => void | Promise<void>
+  }
+}
