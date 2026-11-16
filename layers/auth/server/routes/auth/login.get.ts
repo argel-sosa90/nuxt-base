@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const query = getQuery(event)
-  const returnTo = safeReturnTo(query.returnTo, baseAppConfig().auth.afterLogin)
+  const returnTo = safeReturnTo(query.returnTo, authAppConfig().afterLogin)
   const prompt =
     typeof query.prompt === 'string' && ALLOWED_PROMPTS.has(query.prompt) ? query.prompt : undefined
 

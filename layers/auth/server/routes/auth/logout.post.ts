@@ -11,7 +11,7 @@ import * as oidc from 'openid-client'
  */
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'no-store')
-  const afterLogout = baseAppConfig().auth.afterLogout
+  const afterLogout = authAppConfig().afterLogout
   const user = await getAuthUser(event)
 
   let settings

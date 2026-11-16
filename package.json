@@ -6,6 +6,7 @@
   "main": "./nuxt.config.ts",
   "files": [
     "nuxt.config.ts",
+    "layers",
     "app",
     "server",
     "shared",
@@ -48,5 +49,11 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/argel-sosa90/nuxt-base.git"
+  },
+  "exports": {
+    ".": "./nuxt.config.ts",
+    "./auth": "./layers/auth/nuxt.config.ts",
+    "./mail": "./layers/mail/nuxt.config.ts",
+    "./package.json": "./package.json"
   }
 }

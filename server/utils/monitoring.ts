@@ -26,7 +26,7 @@ export type ServiceKind = 'api' | 'cron' | 'web'
 const ALWAYS_SAMPLE = 'base.always_sample'
 
 /** Rotas que nunca viram transação: dominariam a lista sem dizer nada. */
-const DEFAULT_UNTRACED = ['/api/telemetry', '/api/health', '/api/_auth/session']
+const DEFAULT_UNTRACED = ['/api/telemetry', '/api/health']
 
 export interface MonitoringOptions {
   dsn: string

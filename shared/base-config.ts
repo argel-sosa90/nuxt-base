@@ -7,9 +7,4 @@ export interface BaseAppConfig {
     untracedPaths: string[]
     alwaysSampledPaths: string[]
   }
-  auth: {
-    afterLogin: string
-    afterLogout: string
-    errorRedirect: string
-  }
 }

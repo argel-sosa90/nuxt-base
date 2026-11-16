@@ -25,7 +25,6 @@ const DROPPED_INTEGRATIONS = new Set(['BrowserSession', 'Dedupe', 'Breadcrumbs']
 
 export default defineNuxtPlugin({
   name: 'base:monitoring',
-  dependsOn: ['base:auth'],
   setup(nuxtApp) {
     if (import.meta.dev) return
 
@@ -59,14 +58,5 @@ export default defineNuxtPlugin({
     nuxtApp.$router.afterEach((to) => {
       Sentry.setTag('tela', to.matched.at(-1)?.path ?? '(desconhecida)')
     })
-
-    // A pessoa só pelo id, acompanhando a sessão — inclusive ao sair e ao
-    // trocar de conta no mesmo navegador.
-    const { user } = useAuth()
-    watch(
-      () => user.value?.id,
-      (id) => Sentry.setUser(id ? { id } : null),
-      { immediate: true },
-    )
   },
 })

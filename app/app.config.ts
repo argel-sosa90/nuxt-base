@@ -26,32 +26,21 @@ export default defineAppConfig({
       /** Rotas sempre medidas, fora da amostragem (ex.: a disparada pelo cron). */
       alwaysSampledPaths: [] as string[],
     },
-    auth: {
-      /** Para onde o login volta quando não há `returnTo`. */
-      afterLogin: '/',
-      /** `post_logout_redirect_uri` (caminho; precisa estar cadastrado no IdP). */
-      afterLogout: '/',
-      /** Para onde uma falha de login leva, com `?auth_error=<código>`. */
-      errorRedirect: '/',
-    },
   },
 })
 
 declare module 'nuxt/schema' {
-  interface AppConfigInput {
-    base?: {
-      project?: string
-      telemetry?: {
-        tokenPathPrefixes?: string[]
-        tokenQueryPaths?: string[]
-        untracedPaths?: string[]
-        alwaysSampledPaths?: string[]
-      }
-      auth?: {
-        afterLogin?: string
-        afterLogout?: string
-        errorRedirect?: string
-      }
+  /** A chave `base`; cada sub-layer acrescenta a sua parte a esta interface. */
+  interface BaseAppConfigInput {
+    project?: string
+    telemetry?: {
+      tokenPathPrefixes?: string[]
+      tokenQueryPaths?: string[]
+      untracedPaths?: string[]
+      alwaysSampledPaths?: string[]
     }
+  }
+  interface AppConfigInput {
+    base?: BaseAppConfigInput
   }
 }

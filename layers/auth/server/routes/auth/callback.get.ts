@@ -12,7 +12,7 @@ import type { AuthErrorCode } from '../../../shared/auth'
  */
 
 function failure(event: H3Event, code: AuthErrorCode) {
-  const target = new URL(baseAppConfig().auth.errorRedirect, 'http://x')
+  const target = new URL(authAppConfig().errorRedirect, 'http://x')
   target.searchParams.set('auth_error', code)
   return sendRedirect(event, `${target.pathname}${target.search}`, 302)
 }
@@ -108,5 +108,5 @@ export default defineEventHandler(async (event) => {
   setMonitoringUser(event, user.id)
   log.info('auth', 'Login concluído', { user_id: user.id })
 
-  return sendRedirect(event, returnTo || baseAppConfig().auth.afterLogin, 302)
+  return sendRedirect(event, returnTo || authAppConfig().afterLogin, 302)
 })

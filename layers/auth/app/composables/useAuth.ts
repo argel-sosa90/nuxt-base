@@ -27,12 +27,24 @@ export function useAuth() {
     return navigateTo(`/auth/login?${params}`, { external: true })
   }
 
-  /** Encerra a sessão aqui e no IdP. */
+  /**
+   * Encerra a sessão aqui e no IdP. Antes, o gancho `base:auth:logout` deixa
+   * cada feature limpar o que é da conta neste aparelho (o push desinscreve
+   * o dispositivo; um app com cache offline apaga os dados da conta).
+   */
   async function logout() {
+    await useNuxtApp().callHook('base:auth:logout')
     const { redirect } = await $fetch<{ redirect: string }>('/auth/logout', { method: 'POST' })
     user.value = null
     return navigateTo(redirect, { external: true })
   }
 
   return { user: readonly(user), loggedIn, refresh, login, logout }
+}
+
+declare module '#app' {
+  interface RuntimeNuxtHooks {
+    /** Antes do logout, no navegador. Não deve lançar: sair nunca pode falhar. */
+    'base:auth:logout': () => void | Promise<void>
+  }
 }

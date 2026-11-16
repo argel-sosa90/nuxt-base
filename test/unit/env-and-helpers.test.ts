@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { safeReturnTo } from '../../shared/auth'
+import { safeReturnTo } from '../../layers/auth/shared/auth'
 import { parseSampleRate, readBaseEnv } from '../../server/utils/base-env'
+import { readAuthEnv } from '../../layers/auth/server/utils/auth-env'
 import {
   runHealthChecks,
   registerHealthCheck,
@@ -9,20 +10,22 @@ import {
 import { isAllowedOrigin } from '../../server/utils/origin'
 import { createThrottle } from '../../server/utils/throttle'
 import { interpolate, sendHeartbeat, transactionName } from '../../server/utils/monitoring'
-import { userFromClaims } from '../../server/utils/auth'
+import { userFromClaims } from '../../layers/auth/server/utils/auth'
 
 describe('readBaseEnv', () => {
   it('sem nada configurado: sem login e sem rastreador', () => {
     const env = readBaseEnv({})
     expect(env.appUrl).toBe('http://localhost:3000')
     expect(env.environment).toBe('production')
-    expect(env.oidc).toBeNull()
     expect(env.monitoring.dsn).toBe('')
-    expect(env.session.secret).toBe('')
+    const auth = readAuthEnv({})
+    expect(auth.oidc).toBeNull()
+    expect(auth.session.secret).toBe('')
   })
 
   it('lê o OIDC e normaliza URLs', () => {
-    const env = readBaseEnv({
+    expect(readBaseEnv({ APP_URL: 'https://app.example.com/' }).appOrigin).toBe('https://app.example.com')
+    const env = readAuthEnv({
       APP_URL: 'https://app.example.com/',
       OIDC_ISSUER: 'https://auth.example.com/',
       OIDC_CLIENT_ID: 'id',
@@ -30,7 +33,7 @@ describe('readBaseEnv', () => {
       SESSION_SECRET: 'x'.repeat(32),
       SESSION_MAX_AGE_DAYS: '30',
     })
-    expect(env.appOrigin).toBe('https://app.example.com')
+    expect(env.appUrl).toBe('https://app.example.com')
     expect(env.oidc).toEqual({
       issuer: 'https://auth.example.com',
       clientId: 'id',
@@ -42,11 +45,11 @@ describe('readBaseEnv', () => {
   })
 
   it('segredo curto: recusado em produção, efêmero em desenvolvimento', () => {
-    expect(readBaseEnv({ SESSION_SECRET: 'curto' }).session.secret).toBe('')
-    const dev = readBaseEnv({}, { dev: true })
+    expect(readAuthEnv({ SESSION_SECRET: 'curto' }).session.secret).toBe('')
+    const dev = readAuthEnv({}, { dev: true })
     expect(dev.session.secret).toHaveLength(64)
     expect(dev.session.ephemeral).toBe(true)
-    expect(readBaseEnv({}, { dev: true }).session.secret).toBe(dev.session.secret)
+    expect(readAuthEnv({}, { dev: true }).session.secret).toBe(dev.session.secret)
   })
 
   it('amostragem inválida desliga a medição', () => {

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { $fetch, fetch, setup, url } from '@nuxt/test-utils/e2e'
 import { OAuth2Server } from 'oauth2-mock-server'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { startCaptureServer } from '../support/capture-server'
 import { startFakeTracker } from '../support/fake-tracker'
 
 /**
@@ -26,6 +27,7 @@ await idp.start(await freePort(), '127.0.0.1')
 const issuer = idp.issuer.url!
 
 const tracker = await startFakeTracker()
+const cpaas = await startCaptureServer()
 const port = await freePort()
 const appUrl = `http://127.0.0.1:${port}`
 
@@ -47,6 +49,10 @@ Object.assign(process.env, {
   OIDC_CLIENT_ID: 'playground',
   OIDC_CLIENT_SECRET: 'segredodocliente',
   SESSION_SECRET: 'segredo-de-sessao-com-mais-de-32-caracteres',
+  ZOHO_CPAAS_URL: `${cpaas.url}/v1.1/email`,
+  ZOHO_CPAAS_API_KEY: 'chave-cpaas',
+  MAIL_FROM_ADDRESS: 'nao-responda@example.com',
+  MAIL_FROM_NAME: 'Playground',
 })
 
 await setup({
@@ -60,10 +66,12 @@ await setup({
 afterAll(async () => {
   await idp.stop()
   await tracker.close()
+  await cpaas.close()
 })
 
 beforeEach(() => {
   tracker.clear()
+  cpaas.clear()
   profile = { email: 'Ana@Example.com', email_verified: true, name: 'Ana Teste' }
 })
 
@@ -87,6 +95,17 @@ class CookieJar {
   has(name: string) {
     return this.cookies.has(name)
   }
+}
+
+/**
+ * O evento serializado sem as linhas de código-fonte da pilha (ContextLines):
+ * são código, não dado da requisição, e o playground escreve os valores de
+ * teste literalmente nas rotas.
+ */
+function withoutSourceContext(event: any): string {
+  return JSON.stringify(event, (key, value) =>
+    ['pre_context', 'context_line', 'post_context'].includes(key) ? undefined : value,
+  )
 }
 
 /** Percorre o login inteiro como o navegador faria; devolve o destino final. */
@@ -342,6 +361,34 @@ describe('observabilidade', () => {
     expect(response.status).toBe(204)
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(tracker.items).toEqual([])
+  })
+})
+
+describe('e-mail (Zoho CPaaS)', () => {
+  it('envia com o layout, escapando o conteúdo e com link absoluto', async () => {
+    const response = await $fetch('/api/mail-test', { method: 'POST', headers: { origin: appUrl } })
+    expect(response).toEqual({ sent: true })
+    const [request] = cpaas.requests
+    expect(request!.path).toBe('/v1.1/email')
+    expect(request!.headers.authorization).toBe('Zoho-enczapikey chave-cpaas')
+    const body = JSON.parse(request!.body.toString())
+    expect(body.from).toEqual({ address: 'nao-responda@example.com', name: 'Playground' })
+    expect(body.to).toEqual([{ email_address: { address: 'ana@example.com' } }])
+    expect(body.client_reference).toBe('teste:1')
+    expect(body.htmlbody).toContain('Você foi &lt;convidado&gt;')
+    expect(body.htmlbody).toContain(`href="${appUrl}/convite/token-secreto"`)
+    expect(body.textbody).toContain(`Aceitar: ${appUrl}/convite/token-secreto`)
+  })
+
+  it('recusa do provedor: false, e o GlitchTip recebe o status sem o destinatário', async () => {
+    cpaas.respondWith(422, '{"error":"invalid","to":"ana@example.com"}')
+    expect(await $fetch('/api/mail-test', { method: 'POST', headers: { origin: appUrl } })).toEqual({
+      sent: false,
+    })
+    const event = (await tracker.waitFor((i) => i.type === 'event')).payload
+    expect(event.fingerprint).toEqual(['mail', 'MailRejectedError'])
+    expect(event.contexts.falha).toEqual({ reference: 'teste:1', status: 422 })
+    expect(withoutSourceContext(event)).not.toContain('ana@example.com')
   })
 })
 

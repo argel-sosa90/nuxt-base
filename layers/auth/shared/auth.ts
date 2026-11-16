@@ -33,3 +33,10 @@ export function safeReturnTo(raw: unknown, fallback: string): string {
   if (raw === '/auth' || raw.startsWith('/auth/') || raw.startsWith('/auth?')) return fallback
   return raw
 }
+
+/** Chave `base.auth` do `app.config.ts`. */
+export interface AuthAppConfig {
+  afterLogin: string
+  afterLogout: string
+  errorRedirect: string
+}

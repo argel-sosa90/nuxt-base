@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import * as oidc from 'openid-client'
-import type { AuthUser } from '../../shared/auth'
+import type { AuthAppConfig, AuthUser } from '../../shared/auth'
+import { authEnv } from './auth-env'
 
 /**
  * Autenticação por OIDC genérico (Authorization Code + PKCE) com sessão em
@@ -64,7 +65,7 @@ export class AuthNotConfiguredError extends Error {
 
 /** Configuração do login, ou erro dizendo o que falta. */
 export function authSettings() {
-  const env = baseEnv()
+  const env = authEnv()
   if (!env.oidc) throw new AuthNotConfiguredError('defina OIDC_ISSUER e OIDC_CLIENT_ID')
   if (!env.session.secret) {
     throw new AuthNotConfiguredError('SESSION_SECRET ausente ou com menos de 32 caracteres')
@@ -220,4 +221,9 @@ export function userFromClaims(claims: Record<string, unknown>): AuthUser {
     emailVerified: verified === true || verified === 'true',
     ...(name ? { name } : {}),
   }
+}
+
+/** A chave `base.auth` do `app.config.ts`, com os padrões do layer. */
+export function authAppConfig(): AuthAppConfig {
+  return (useAppConfig() as unknown as { base: { auth: AuthAppConfig } }).base.auth
 }
