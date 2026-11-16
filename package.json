@@ -1,0 +1,48 @@
+{
+  "name": "@asolutions/nuxt-base",
+  "version": "0.1.0",
+  "description": "Nuxt Layer com as partes comuns dos apps da ASolutions: observabilidade no GlitchTip, autenticação OIDC, saúde e cabeçalhos de segurança",
+  "type": "module",
+  "main": "./nuxt.config.ts",
+  "files": [
+    "nuxt.config.ts",
+    "app",
+    "server",
+    "shared",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "nuxt dev .playground",
+    "build": "nuxt build .playground",
+    "prepare": "nuxt prepare .playground",
+    "typecheck": "nuxt typecheck .playground",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration"
+  },
+  "peerDependencies": {
+    "nuxt": "^4.6.0"
+  },
+  "dependencies": {
+    "@sentry/node": "11.12.0",
+    "@sentry/vue": "11.12.0",
+    "openid-client": "6.9.0"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "4.4.0",
+    "@types/node": "^22.20.5",
+    "nuxt": "4.6.4",
+    "oauth2-mock-server": "9.3.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0",
+    "vue": "3.5.45",
+    "vue-router": "5.5.0",
+    "vue-tsc": "3.3.14"
+  }
+}

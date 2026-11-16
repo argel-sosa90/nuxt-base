@@ -1,0 +1,10 @@
+{
+  // Os tsconfigs reais são gerados pelo Nuxt em .nuxt/ a cada `nuxt prepare`.
+  "files": [],
+  "references": [
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" },
+    { "path": "./.nuxt/tsconfig.node.json" }
+  ]
+}
