@@ -1,5 +1,6 @@
-# Layer: formatação, tipos e testes (unitários e integração com build de
-# produção do playground, IdP OIDC e GlitchTip simulados).
+# Layer: formatação, tipos e testes (unitários, resolução de cada entrada do
+# pacote, e integração com build de produção do playground contra IdP OIDC,
+# GlitchTip, Zoho CPaaS e serviços de push simulados, mais o PWA no Chromium).
 # Template: instalado contra o layer empacotado deste commit, com lint, tipos,
 # testes num Postgres de serviço e build.
 name: CI
@@ -25,6 +26,10 @@ jobs:
           node-version: 24
       - name: Dependências
         run: npm ci --no-audit --no-fund
+      # Os testes do PWA rodam no Chromium completo (o headless shell nega
+      # notificações no service worker).
+      - name: Chromium
+        run: npx playwright install --with-deps chromium
       - name: Formatação
         run: npm run format:check
       - name: Tipos

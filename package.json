@@ -32,6 +32,7 @@
   "dependencies": {
     "@sentry/node": "11.12.0",
     "@sentry/vue": "11.12.0",
+    "@types/web-push": "^3.6.4",
     "@vite-pwa/nuxt": "1.1.1",
     "openid-client": "6.9.0",
     "web-push": "3.6.7",
@@ -43,7 +44,6 @@
   "devDependencies": {
     "@nuxt/test-utils": "4.4.0",
     "@types/node": "^22.20.5",
-    "@types/web-push": "^3.6.4",
     "nuxt": "4.6.4",
     "oauth2-mock-server": "9.3.0",
     "playwright": "^1.63.0",
@@ -64,6 +64,7 @@
     "./mail": "./layers/mail/nuxt.config.ts",
     "./pwa": "./layers/pwa/nuxt.config.ts",
     "./push": "./layers/push/nuxt.config.ts",
+    "./push/server": "./layers/push/server/utils/push.ts",
     "./sw": "./layers/pwa/service-worker/core.ts",
     "./sw/push": "./layers/push/service-worker/push.ts",
     "./package.json": "./package.json"

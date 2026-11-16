@@ -13,6 +13,10 @@ export default defineAppConfig({
       afterLogout: '/',
       errorRedirect: '/',
     },
+    mail: {
+      brandName: 'Meu App',
+      brandColor: '#16a34a',
+    },
   },
   ui: {
     colors: {

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Perfil local da pessoa. A identidade (senha, MFA, recuperação, verificação
@@ -17,3 +17,22 @@ export const users = pgTable('users', {
 })
 
 export type User = typeof users.$inferSelect
+
+/**
+ * Inscrições de Web Push, uma por aparelho. O `endpoint` é único: reinscrever
+ * o mesmo aparelho atualiza a linha (e a transfere para a conta que entrou).
+ * O endereço é uma credencial: não vai a log nem ao GlitchTip.
+ */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    endpoint: text('endpoint').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('push_subscriptions_user_id_idx').on(table.userId)],
+)
