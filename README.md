@@ -17,16 +17,16 @@ Cada app escolhe as suas, como "extras" de um pacote:
 
 ```ts
 // nuxt.config.ts
-extends: ['@asolutions/nuxt-base/push', '@asolutions/nuxt-base/mail']
+extends: ['@asolutions/nuxt-base/auth', '@asolutions/nuxt-base/push']
 ```
 
-| Entrada                      | O quê                                                                                                                                       | Traz junto              |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `@asolutions/nuxt-base`      | **Núcleo**: GlitchTip (erros, logs, desempenho, batimento), `/api/health`, cabeçalhos de segurança, conferência de origem, limite por chave | —                       |
-| `@asolutions/nuxt-base/auth` | Login OIDC genérico, sessão em cookie selado, `useAuth`, middleware `auth`                                                                  | núcleo                  |
-| `@asolutions/nuxt-base/mail` | E-mail pelo Zoho CPaaS, layout que escapa o conteúdo                                                                                        | núcleo                  |
-| `@asolutions/nuxt-base/pwa`  | Manifest, service worker com precache, tela offline, limpeza de cache no logout                                                             | núcleo                  |
-| `@asolutions/nuxt-base/push` | Web Push: VAPID, envio, limpeza de inscrições mortas, `usePush`, notificação no service worker                                              | núcleo, `/pwa`, `/auth` |
+| Entrada                      | O quê                                                                                                                                       | Traz junto     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `@asolutions/nuxt-base`      | **Núcleo**: GlitchTip (erros, logs, desempenho, batimento), `/api/health`, cabeçalhos de segurança, conferência de origem, limite por chave | —              |
+| `@asolutions/nuxt-base/auth` | Login OIDC genérico, sessão em cookie selado, `useAuth`, middleware `auth`                                                                  | núcleo         |
+| `@asolutions/nuxt-base/mail` | E-mail pelo Zoho CPaaS, layout que escapa o conteúdo                                                                                        | núcleo         |
+| `@asolutions/nuxt-base/pwa`  | Manifest, service worker com precache, tela offline, limpeza de cache no logout                                                             | núcleo         |
+| `@asolutions/nuxt-base/push` | Web Push: VAPID, envio, limpeza de inscrições mortas, `usePush`, notificação no service worker; com ou sem login                            | núcleo, `/pwa` |
 
 Uma entrada só, uma versão só: nada de descobrir se o `/push` 1.3 combina com o `/auth`
 1.1. As dependências de todas as features vêm no pacote, mas a imagem Docker só leva o
@@ -241,12 +241,17 @@ Marca no `app.config.ts`: `base.mail.brandName`, `brandColor`, `footer`.
 
 ## `/push`: notificações
 
+Toda inscrição tem um **dono**, uma string que o layer não interpreta: o id da conta num
+app com login, ou o que o app usar para agrupar aparelhos sem login (um canal, uma
+família). O app registra, num plugin do Nitro, de quem é a inscrição e onde ela fica:
+
 ```ts
-// servidor: onde as inscrições ficam (o template traz a tabela e o store)
-registerPushStore(createPushStore(useDatabase()))
+// servidor, num plugin do Nitro (o template traz este)
+registerPushOwner(async (event) => (await requireAuthUser(event)).id) // 401 sem sessão
+registerPushStore(createPushStore(useDatabase())) // tabela do template
 
 // enviar: nunca lança; apaga as inscrições que o serviço diz não existirem (404/410)
-await sendPushToUser(user.id, {
+await sendPushToOwner(user.id, {
   title: 'Conta vence hoje',
   body: 'Luz',
   url: '/contas/1',
@@ -259,13 +264,44 @@ const result = await push.enable() // 'enabled' | 'denied' | 'unsupported' | 'no
 await push.disable()
 ```
 
-Rotas: `GET /api/_push/vapid-key`, `POST` e `DELETE /api/_push/subscription` (exigem
-login; a inscrição é sempre da conta da sessão). Só aceita inscrições de serviços de push
+Rotas: `GET /api/_push/vapid-key`, `POST` e `DELETE /api/_push/subscription` (a
+inscrição é sempre do dono que `registerPushOwner` devolve; o erro que ele lançar vira a
+resposta, e sem registro a rota falha com o motivo no log). Só aceita inscrições de serviços de push
 conhecidos (Google, Mozilla, Apple, Microsoft), em https: o servidor faz POST no endereço
 que o navegador manda, e sem isso uma conta faria o servidor chamar um endereço interno.
 O endereço da inscrição é credencial e nunca vai a log nem ao GlitchTip.
 
 Para um service worker próprio, importe `setupPush` de `@asolutions/nuxt-base/sw/push`.
+
+## App sem login ou sem banco
+
+As features não dependem de login nem de banco: `/push` pede só um dono e um store.
+
+**Sem login.** Tire `@asolutions/nuxt-base/auth` do `extends` e registre outro dono. O
+dono decide quem recebe as notificações, então nunca o aceite do corpo sem conferir: um
+código aleatório longo (canal) funciona como credencial.
+
+```ts
+registerPushOwner((event) => {
+  const channel = getRequestHeader(event, 'x-push-channel') ?? ''
+  if (!/^[\w-]{32,64}$/.test(channel)) throw createError({ statusCode: 400 })
+  return channel
+})
+```
+
+**Sem banco.** `createFilePushStore` guarda as inscrições num arquivo JSON (escrita
+atômica, permissão 600). Monte o diretório como volume no Dokploy; serve a uma réplica
+só.
+
+```ts
+registerPushStore(createFilePushStore(process.env.PUSH_STORE_FILE || 'data/push.json'))
+```
+
+A partir do template, apague `drizzle.config.ts`, `server/database/`,
+`server/plugins/database.ts`, `server/plugins/auth-profile.ts`, `server/utils/profile.ts`,
+`server/utils/push-store.ts`, `test/integration/`, os serviços `db`/`db-test` do
+`docker-compose.yml` e as dependências `drizzle-orm`, `postgres` e `drizzle-kit`. A
+fixture `test/fixtures/apps/push-sem-login` é um app completo assim.
 
 ## Variáveis de ambiente
 
@@ -343,7 +379,8 @@ npm run format
 A integração compila o playground em produção e o testa contra um IdP OIDC simulado
 (`oauth2-mock-server`), um GlitchTip falso, um Zoho CPaaS falso e serviços de push falsos
 (HTTPS com certificado gerado no teste), e abre o app no Chromium: precache, tela offline,
-push entregue pelo DevTools e limpeza de cache no logout. O CI também instala o
+push entregue pelo DevTools e limpeza de cache no logout. Um segundo app
+(`test/fixtures/apps/push-sem-login`) confere o push sem login e sem banco. O CI também instala o
 `template/` contra o pacote do commit e roda lint, tipos, testes e build.
 
 ## Decisões
@@ -355,3 +392,6 @@ push entregue pelo DevTools e limpeza de cache no logout. O CI também instala o
 - **Sessão selada em cookie**, e não Better Auth: com IdP externo, o app não precisa de
   tabelas de autenticação, só do perfil.
 - **Banco e inscrições de push no template**, não nos layers: o schema é de cada app.
+- **Push sem `/auth` embutido**: o dono da inscrição é registrado pelo app
+  (`registerPushOwner`), como o store. Um app sem login (o GlitchPocket, por canal) usa o
+  mesmo layer, e o com login escreve uma linha a mais no plugin.

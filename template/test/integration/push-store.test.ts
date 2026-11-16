@@ -27,8 +27,8 @@ describe('push store', () => {
     const bruno = await upsertProfile(db, { sub: 'bruno' })
     await store.save(ana.id, device)
     await store.save(bruno.id, { ...device, auth: 'b' })
-    expect(await store.listForUser(ana.id)).toEqual([])
-    expect(await store.listForUser(bruno.id)).toEqual([{ ...device, auth: 'b' }])
+    expect(await store.listForOwner(ana.id)).toEqual([])
+    expect(await store.listForOwner(bruno.id)).toEqual([{ ...device, auth: 'b' }])
   })
 
   it('só remove a inscrição da própria conta', async () => {
@@ -36,9 +36,9 @@ describe('push store', () => {
     const bruno = await upsertProfile(db, { sub: 'bruno' })
     await store.save(ana.id, device)
     await store.remove(bruno.id, device.endpoint)
-    expect(await store.listForUser(ana.id)).toHaveLength(1)
+    expect(await store.listForOwner(ana.id)).toHaveLength(1)
     await store.remove(ana.id, device.endpoint)
-    expect(await store.listForUser(ana.id)).toEqual([])
+    expect(await store.listForOwner(ana.id)).toEqual([])
   })
 
   it('apaga as mortas em lote', async () => {
@@ -46,7 +46,7 @@ describe('push store', () => {
     await store.save(ana.id, device)
     await store.save(ana.id, { ...device, endpoint: 'https://fcm.googleapis.com/fcm/send/b' })
     await store.removeEndpoints([device.endpoint])
-    expect((await store.listForUser(ana.id)).map((s) => s.endpoint)).toEqual([
+    expect((await store.listForOwner(ana.id)).map((s) => s.endpoint)).toEqual([
       'https://fcm.googleapis.com/fcm/send/b',
     ])
   })

@@ -3,24 +3,27 @@ import type { PushStore } from '@asolutions/nuxt-base/push/server'
 import type { Database } from '../database/client'
 import { pushSubscriptions } from '../database/schema'
 
-/** Onde o layer `/push` guarda as inscrições: a tabela `push_subscriptions`. */
+/**
+ * Onde o layer `/push` guarda as inscrições: a tabela `push_subscriptions`. O
+ * dono é o id do perfil local (`registerPushOwner` no plugin).
+ */
 export function createPushStore(db: Database): PushStore {
   return {
-    async save(userId, subscription) {
+    async save(owner, subscription) {
       await db
         .insert(pushSubscriptions)
-        .values({ userId, ...subscription })
+        .values({ userId: owner, ...subscription })
         .onConflictDoUpdate({
           target: pushSubscriptions.endpoint,
-          set: { userId, p256dh: subscription.p256dh, auth: subscription.auth },
+          set: { userId: owner, p256dh: subscription.p256dh, auth: subscription.auth },
         })
     },
-    async remove(userId, endpoint) {
+    async remove(owner, endpoint) {
       await db
         .delete(pushSubscriptions)
-        .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, userId)))
+        .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, owner)))
     },
-    listForUser(userId) {
+    listForOwner(owner) {
       return db
         .select({
           endpoint: pushSubscriptions.endpoint,
@@ -28,7 +31,7 @@ export function createPushStore(db: Database): PushStore {
           auth: pushSubscriptions.auth,
         })
         .from(pushSubscriptions)
-        .where(eq(pushSubscriptions.userId, userId))
+        .where(eq(pushSubscriptions.userId, owner))
     },
     async removeEndpoints(endpoints) {
       if (endpoints.length === 0) return

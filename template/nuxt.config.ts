@@ -6,9 +6,15 @@ export default defineNuxtConfig({
   //   @asolutions/nuxt-base/auth   login OIDC
   //   @asolutions/nuxt-base/mail   e-mail pelo Zoho CPaaS
   //   @asolutions/nuxt-base/pwa    PWA instalável, tela offline
-  //   @asolutions/nuxt-base/push   Web Push (traz /pwa e /auth)
+  //   @asolutions/nuxt-base/push   Web Push (traz /pwa; não exige login)
   // Configuração em app/app.config.ts (chave `base`) e no .env.example.
-  extends: ['@asolutions/nuxt-base/push', '@asolutions/nuxt-base/mail'],
+  // App sem login: tire o /auth daqui; sem banco: ver "App sem login ou sem
+  // banco" no README da base.
+  extends: [
+    '@asolutions/nuxt-base/auth',
+    '@asolutions/nuxt-base/push',
+    '@asolutions/nuxt-base/mail',
+  ],
 
   compatibilityDate: '2026-11-01',
 

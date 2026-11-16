@@ -27,7 +27,7 @@ describe('entradas do pacote', () => {
     ['auth', ['.', 'layers/auth']],
     ['mail', ['.', 'layers/mail']],
     ['pwa', ['.', 'layers/pwa']],
-    ['push', ['.', 'layers/auth', 'layers/push', 'layers/pwa']],
+    ['push', ['.', 'layers/push', 'layers/pwa']],
   ])('%s', async (entry, expected) => {
     expect(await layersOf(entry)).toEqual(expected)
   })
