@@ -49,6 +49,8 @@ Depois, em `meu-app/`:
    `.github/workflows/deploy.yml` (`image`) e `nuxt.config.ts` (título e manifest).
    Troque os ícones de `public/`.
 2. `cp .env.example .env`, `docker compose up -d db db-test`, `npm install`, `npm run dev`.
+   Versione o `package-lock.json` que o `npm install` gera: o Dockerfile e o CI usam
+   `npm ci`, que exige o lockfile (e é ele que fixa o hash do pacote da base).
 3. Siga o [checklist de produção](#checklist-de-produção).
 
 ## Núcleo
