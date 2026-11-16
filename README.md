@@ -354,7 +354,7 @@ O pacote é publicado como `.tgz` numa release do GitHub (`release.yml`, ao cria
 `vX.Y.Z` igual ao `version` do `package.json`). O app depende da URL:
 
 ```json
-"@asolutions/nuxt-base": "https://github.com/argel-sosa90/nuxt-base/releases/download/v0.1.0/asolutions-nuxt-base-0.1.0.tgz"
+"@asolutions/nuxt-base": "https://github.com/argel-sosa90/nuxt-base/releases/download/v0.2.0/asolutions-nuxt-base-0.2.0.tgz"
 ```
 
 Sem registry e sem token; o `package-lock.json` fixa o hash. Para atualizar um app:
